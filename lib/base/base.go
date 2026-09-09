@@ -17,6 +17,17 @@ var LibLoader = packagelib.Loader{
 
 func Load(r *rt.Runtime) (rt.Value, func()) {
 	env := r.GlobalEnv()
+
+	// Built here, per Runtime, rather than as package-level vars: as package
+	// level vars these two *rt.GoFunction values were shared by every Runtime
+	// in the process, and SolemnlyDeclareCompliance below writes their
+	// safetyFlags on every Load while any other Runtime's already-running
+	// script reads the same field in GoCont.RunInThread on every
+	// ipairs/pairs/next call. That write/read pair is unsynchronized and sits
+	// on the call path itself, so no embedder-side lock can close it.
+	ipairsIterator := rt.NewGoFunction(ipairsIteratorF, "ipairsiterator", 2, false)
+	nextGoFunc := rt.NewGoFunction(next, "next", 2, false)
+
 	r.SetEnv(env, "_G", rt.TableValue(env))
 	r.SetEnv(env, "_VERSION", rt.StringValue("Golua 5.5"))
 	r.SetEnv(env, "next", rt.FunctionValue(nextGoFunc))
@@ -29,9 +40,9 @@ func Load(r *rt.Runtime) (rt.Value, func()) {
 		r.SetEnvGoFunc(env, "assert", assert, 1, true),
 		r.SetEnvGoFunc(env, "error", errorF, 2, false),
 		r.SetEnvGoFunc(env, "getmetatable", getmetatable, 1, false),
-		r.SetEnvGoFunc(env, "ipairs", ipairs, 1, false),
+		r.SetEnvGoFunc(env, "ipairs", ipairs(ipairsIterator), 1, false),
 		r.SetEnvGoFunc(env, "load", load, 4, false),
-		r.SetEnvGoFunc(env, "pairs", pairs, 1, false),
+		r.SetEnvGoFunc(env, "pairs", pairs(nextGoFunc), 1, false),
 		r.SetEnvGoFunc(env, "pcall", pcall, 1, true),
 		r.SetEnvGoFunc(env, "print", print, 0, true), // print only writes to the host-controlled stdout, so it's safe in restricted contexts
 		r.SetEnvGoFunc(env, "rawequal", rawequal, 2, false),
