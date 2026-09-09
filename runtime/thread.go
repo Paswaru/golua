@@ -270,8 +270,13 @@ func (t *Thread) end(args []Value, err error, exception interface{}) {
 	t.caller = nil
 	err = t.cleanupCloseStack(nil, 0, err) // TODO: not nil
 	t.closeErr = err
-	caller.sendResumeValues(args, err, exception)
+	// Give back the goroutine stack accounted for in Start before handing
+	// control to the caller: sendResumeValues lets the caller run again, and it
+	// shares this thread's runtimeContextManager, so releasing afterwards would
+	// touch that manager from this goroutine while the caller is already using
+	// it.
 	t.ReleaseBytes(2 << 10) // The goroutine will terminate after this
+	caller.sendResumeValues(args, err, exception)
 }
 
 func (t *Thread) call(c Callable, args []Value, next Cont) error {
