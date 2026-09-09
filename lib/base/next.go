@@ -29,5 +29,3 @@ func next(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 	}
 	return next, nil
 }
-
-var nextGoFunc = rt.NewGoFunction(next, "next", 2, false)
