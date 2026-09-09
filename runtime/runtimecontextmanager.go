@@ -154,9 +154,24 @@ func (m *runtimeContextManager) PopContext() RuntimeContext {
 	if mCopy.status == StatusLive {
 		mCopy.status = StatusDone
 	}
-	m.parent.RequireCPU(m.usedResources.Cpu)
-	m.parent.RequireMem(m.usedResources.Memory)
+	// Restore the parent as the current context BEFORE charging it the child's
+	// consumption, rather than charging m.parent and restoring afterwards.
+	// Charging a struct and then copying it is arithmetically identical to
+	// copying it and then charging the copy, so this matters only when the
+	// charge pushes the parent OVER a hard limit. RequireCPU/RequireMem then
+	// panic, and panicking before `*m = *m.parent` would abandon the unwind
+	// with the context stack still pointing at the already-popped child. A
+	// pcall further out recovers into that misaligned stack, and its next
+	// PushContext derives the child budget from an over-drawn parent:
+	// RuntimeResources.Remove clamps the subtraction at 0, and a limit of 0
+	// means "unlimited" in this encoding, so the limits would be gone
+	// altogether. updateTimeUsed() below can panic for the same reason and
+	// already sits after the restore.
+	childCpuUsed := m.usedResources.Cpu
+	childMemUsed := m.usedResources.Memory
 	*m = *m.parent
+	m.RequireCPU(childCpuUsed)
+	m.RequireMem(childMemUsed)
 	if m.trackTime {
 		m.updateTimeUsed()
 	}
@@ -177,6 +192,13 @@ func (m *runtimeContextManager) requireCPU(cpuAmount uint64) {
 		m.KillContext()
 	}
 	cpuUsed := m.usedResources.Cpu + cpuAmount
+	// Record the new total BEFORE the limit check, so the very tick that
+	// exhausts the budget is still accounted for. Assigning it only on the
+	// non-terminating path leaves a killed context reporting that it consumed
+	// nothing, so PopContext charges its parent nothing -- which makes the
+	// limit escapable at zero cost, because a script looping on pcall(f) then
+	// gets a full fresh budget on every iteration however much f consumed.
+	m.usedResources.Cpu = cpuUsed
 	if atLimit(cpuUsed, m.hardLimits.Cpu) {
 		m.TerminateContext("CPU limit of %d exceeded", m.hardLimits.Cpu)
 	}
@@ -184,10 +206,18 @@ func (m *runtimeContextManager) requireCPU(cpuAmount uint64) {
 		m.nextCpuThreshold = cpuUsed + cpuThresholdIncrement
 		m.updateTimeUsed()
 	}
-	m.usedResources.Cpu = cpuUsed
 }
 
 func (m *runtimeContextManager) UnusedCPU() uint64 {
+	// usedResources may exceed hardLimits: requireCPU records the over-limit
+	// total precisely so PopContext can charge it onward. This subtraction
+	// would then wrap to a near-maximum uint64 that LinearUnused reads as an
+	// enormous free budget. A hard limit of 0 means "unlimited" and must keep
+	// returning the wrapped value, which is what callers already interpret as
+	// unbounded -- hence the > 0 condition.
+	if m.hardLimits.Cpu > 0 && m.usedResources.Cpu >= m.hardLimits.Cpu {
+		return 0
+	}
 	return m.hardLimits.Cpu - m.usedResources.Cpu
 }
 
@@ -205,10 +235,14 @@ func (m *runtimeContextManager) requireMem(memAmount uint64) {
 		m.KillContext()
 	}
 	memUsed := m.usedResources.Memory + memAmount
+	// Record the new total BEFORE the limit check, for the reason given in
+	// requireCPU above: a killed context that reports consuming nothing gets
+	// its parent charged nothing by PopContext, and the limit becomes escapable
+	// at zero cost through a pcall loop.
+	m.usedResources.Memory = memUsed
 	if atLimit(memUsed, m.hardLimits.Memory) {
 		m.TerminateContext("memory limit of %d exceeded", m.hardLimits.Memory)
 	}
-	m.usedResources.Memory = memUsed
 }
 
 func (m *runtimeContextManager) RequireSize(sz uintptr) (mem uint64) {
@@ -254,6 +288,11 @@ func (m *runtimeContextManager) ReleaseBytes(n int) {
 }
 
 func (m *runtimeContextManager) UnusedMem() uint64 {
+	// Same wrap-around and same "a hard limit of 0 means unlimited" carve-out
+	// as UnusedCPU above.
+	if m.hardLimits.Memory > 0 && m.usedResources.Memory >= m.hardLimits.Memory {
+		return 0
+	}
 	return m.hardLimits.Memory - m.usedResources.Memory
 }
 
