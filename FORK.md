@@ -4,9 +4,12 @@ This is a fork of [`arnodel/golua`](https://github.com/arnodel/golua) carrying t
 sandbox-hardening fixes found while embedding golua in Helios Advance BBS, which runs
 untrusted sysop-authored Lua under per-execution CPU, memory and wall-clock ceilings.
 
-Both fixes are offered upstream. Nothing here is embedder-specific: the module path in
-`go.mod` is still `github.com/arnodel/golua`, no embedder code or naming appears in the
-patched files, and every branch below applies cleanly to upstream `lua5.5`.
+Nothing here is embedder-specific: the module path in `go.mod` is still
+`github.com/arnodel/golua`, no embedder code or naming appears in the patched files, and
+every branch below applies cleanly to upstream `lua5.5`. No issue or pull request has been
+filed against `arnodel/golua`, and none is planned — but the fixes are deliberately kept in
+a submittable shape, so anyone who wants to take them upstream can, and the maintainer is
+welcome to lift either branch.
 
 ## Branches
 
@@ -47,9 +50,8 @@ completion; the iterator fix by a `-race` test that constructs runtimes concurre
 a running script looping over `ipairs`/`pairs`/`next`, whose racing frames are
 `GoCont.RunInThread` and `GoFunction.SolemnlyDeclareCompliance`.
 
-Porting equivalent tests into this repository's own suite is outstanding work. An
-upstream PR should carry a test written to upstream's conventions rather than a copy of
-the embedder's.
+Porting equivalent tests into this repository's own suite is outstanding work, and would
+mainly serve to catch a bad re-apply when rebasing onto newer upstream.
 
 ## Rebasing onto newer upstream
 
