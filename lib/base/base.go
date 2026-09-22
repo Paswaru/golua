@@ -15,6 +15,18 @@ var LibLoader = packagelib.Loader{
 	Load: Load,
 }
 
+// ipairsIterator and nextGoFunc are shared by every Runtime in the process, so
+// their flags are declared here rather than in Load: Load runs while other
+// Runtimes are already running scripts, and those read the same flags on every
+// ipairs/pairs/next call.
+func init() {
+	rt.SolemnlyDeclareCompliance(
+		rt.ComplyCpuSafe|rt.ComplyMemSafe|rt.ComplyTimeSafe|rt.ComplyIoSafe,
+		ipairsIterator,
+		nextGoFunc,
+	)
+}
+
 func Load(r *rt.Runtime) (rt.Value, func()) {
 	env := r.GlobalEnv()
 	r.SetEnv(env, "_G", rt.TableValue(env))
@@ -24,8 +36,6 @@ func Load(r *rt.Runtime) (rt.Value, func()) {
 	rt.SolemnlyDeclareCompliance(
 		rt.ComplyCpuSafe|rt.ComplyMemSafe|rt.ComplyTimeSafe|rt.ComplyIoSafe,
 
-		ipairsIterator,
-		nextGoFunc,
 		r.SetEnvGoFunc(env, "assert", assert, 1, true),
 		r.SetEnvGoFunc(env, "error", errorF, 2, false),
 		r.SetEnvGoFunc(env, "getmetatable", getmetatable, 1, false),
