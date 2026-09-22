@@ -91,7 +91,7 @@ func pack(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 		return nil, err
 	}
 	res, used, perr := PackValues(string(format), c.Etc(), t.LinearUnused(10))
-	t.LinearRequire(10, used)
+	t.LinearConsume(10, used)
 	if perr != nil {
 		return nil, perr
 	}
@@ -122,7 +122,7 @@ func unpack(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 		return nil, err
 	}
 	vals, m, used, uerr := UnpackString(string(format), string(pack), i, t.LinearUnused(10))
-	t.LinearRequire(10, used)
+	t.LinearConsume(10, used)
 	if uerr != nil {
 		return nil, uerr
 	}

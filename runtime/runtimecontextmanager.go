@@ -154,9 +154,20 @@ func (m *runtimeContextManager) PopContext() RuntimeContext {
 	if mCopy.status == StatusLive {
 		mCopy.status = StatusDone
 	}
-	m.parent.RequireCPU(m.usedResources.Cpu)
-	m.parent.RequireMem(m.usedResources.Memory)
+	childUsed := m.usedResources
+	// Restore the parent BEFORE charging it what the child consumed.  The
+	// charge can terminate the parent, and the panic must then unwind with the
+	// context stack already pointing at the parent.  Otherwise an enclosing
+	// CallContext recovers into the popped child, and its next PushContext
+	// derives a budget from the wrong context.
 	*m = *m.parent
+	// What the child consumed is work already done, so it is recorded with
+	// Consume semantics: it must reach the parent's accounts even when it
+	// takes the parent to its limit, so that PopContext further up charges it
+	// onward.  Memory is charged in a defer so that it is not lost when the
+	// CPU or time charge terminates the parent.
+	defer m.ConsumeMem(childUsed.Memory)
+	m.ConsumeCPU(childUsed.Cpu)
 	if m.trackTime {
 		m.updateTimeUsed()
 	}
@@ -187,6 +198,40 @@ func (m *runtimeContextManager) requireCPU(cpuAmount uint64) {
 	m.usedResources.Cpu = cpuUsed
 }
 
+// ConsumeCPU records cpuAmount units of CPU that have already been used.
+//
+// RequireCPU is called before a unit of work and records nothing when it
+// refuses, which is right because the work then does not happen.  Some
+// functions instead take a budget from UnusedCPU or LinearUnused, do the work,
+// and report what they used afterwards.  That work has happened whether or not
+// it fits, so it is recorded (saturating at the hard limit) before the context
+// is terminated for reaching the limit.  Otherwise a terminated context reports
+// less than it consumed, PopContext charges its parent too little, and wrapping
+// the call in pcall gives a script a fresh budget for the same work every time.
+func (m *runtimeContextManager) ConsumeCPU(cpuAmount uint64) {
+	if m.trackCpu {
+		m.consumeCPU(cpuAmount)
+	}
+}
+
+//go:noinline
+func (m *runtimeContextManager) consumeCPU(cpuAmount uint64) {
+	if m.stopLevel&HardStop != 0 {
+		m.KillContext()
+	}
+	cpuUsed := m.usedResources.Cpu + cpuAmount
+	if atLimit(cpuUsed, m.hardLimits.Cpu) {
+		m.usedResources.Cpu = m.hardLimits.Cpu
+		m.TerminateContext("CPU limit of %d exceeded", m.hardLimits.Cpu)
+		return
+	}
+	m.usedResources.Cpu = cpuUsed
+	if m.trackTime && m.nextCpuThreshold <= cpuUsed {
+		m.nextCpuThreshold = cpuUsed + cpuThresholdIncrement
+		m.updateTimeUsed()
+	}
+}
+
 func (m *runtimeContextManager) UnusedCPU() uint64 {
 	return m.hardLimits.Cpu - m.usedResources.Cpu
 }
@@ -207,6 +252,28 @@ func (m *runtimeContextManager) requireMem(memAmount uint64) {
 	memUsed := m.usedResources.Memory + memAmount
 	if atLimit(memUsed, m.hardLimits.Memory) {
 		m.TerminateContext("memory limit of %d exceeded", m.hardLimits.Memory)
+	}
+	m.usedResources.Memory = memUsed
+}
+
+// ConsumeMem records memAmount units of memory that have already been used.
+// See ConsumeCPU for the difference with RequireMem.
+func (m *runtimeContextManager) ConsumeMem(memAmount uint64) {
+	if m.trackMem {
+		m.consumeMem(memAmount)
+	}
+}
+
+//go:noinline
+func (m *runtimeContextManager) consumeMem(memAmount uint64) {
+	if m.stopLevel&HardStop != 0 {
+		m.KillContext()
+	}
+	memUsed := m.usedResources.Memory + memAmount
+	if atLimit(memUsed, m.hardLimits.Memory) {
+		m.usedResources.Memory = m.hardLimits.Memory
+		m.TerminateContext("memory limit of %d exceeded", m.hardLimits.Memory)
+		return
 	}
 	m.usedResources.Memory = memUsed
 }
@@ -288,6 +355,17 @@ func (m *runtimeContextManager) LinearUnused(cpuFactor uint64) uint64 {
 func (m *runtimeContextManager) LinearRequire(cpuFactor uint64, amt uint64) {
 	m.RequireMem(amt)
 	m.RequireCPU(amt / cpuFactor)
+}
+
+// LinearConsume is the counterpart of LinearRequire for a budget obtained from
+// LinearUnused (with the same cpuFactor) that has already been consumed: the
+// work is recorded even when it terminates the context.  See ConsumeCPU.
+func (m *runtimeContextManager) LinearConsume(cpuFactor uint64, amt uint64) {
+	// Deferred so that the CPU is still recorded if the memory charge
+	// terminates the context (a second Consume in a terminated context records
+	// but does not panic again).
+	defer m.ConsumeCPU(amt / cpuFactor)
+	m.ConsumeMem(amt)
 }
 
 // KillContext forcefully terminates the context with the message "force kill".

@@ -112,6 +112,6 @@ func loadChunk(t *rt.Thread, args []rt.Value) (chunk []byte, chunkName string, e
 	if err != nil {
 		return nil, chunkName, err
 	}
-	t.LinearRequire(10, uint64(len(chunk)))
+	t.LinearConsume(10, uint64(len(chunk)))
 	return chunk, chunkName, nil
 }

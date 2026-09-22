@@ -58,7 +58,7 @@ func find(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 			return nil, err
 		}
 		captures, usedCPU := pat.MatchFromStart(string(s), si, t.UnusedCPU())
-		t.RequireCPU(usedCPU)
+		t.ConsumeCPU(usedCPU)
 		if len(captures) == 0 {
 			t.Push1(next, rt.NilValue)
 		} else {
@@ -99,7 +99,7 @@ func match(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 		return nil, ptnErr
 	}
 	captures, usedCPU := pat.MatchFromStart(string(s), si, t.UnusedCPU())
-	t.RequireCPU(usedCPU)
+	t.ConsumeCPU(usedCPU)
 	pushCaptures(t.Runtime, captures, s, next)
 	return next, nil
 }
@@ -169,7 +169,7 @@ func gmatch(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 		)
 		for {
 			captures, usedCPU = pat.Match(s, si, t.UnusedCPU())
-			t.RequireCPU(usedCPU)
+			t.ConsumeCPU(usedCPU)
 			if len(captures) == 0 {
 				break
 			}
@@ -321,7 +321,7 @@ func gsub(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 	// in the string builder.
 	for ; matchCount != n; matchCount++ {
 		captures, usedCPU := pat.Match(string(s), si, t.UnusedCPU())
-		t.RequireCPU(usedCPU)
+		t.ConsumeCPU(usedCPU)
 		if len(captures) == 0 {
 			break
 		}

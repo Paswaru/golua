@@ -25,7 +25,7 @@ func dump(t *rt.Thread, c *rt.GoCont) (rt.Cont, error) {
 	used, mErr := rt.MarshalConst(&w, rt.CodeValue(code), t.LinearUnused(10))
 	// This will cause a panic if MarshalConst was interupted, so no need to
 	// worry about the rest of this codepath in this case.
-	t.LinearRequire(10, used)
+	t.LinearConsume(10, used)
 	if err != nil {
 		return nil, mErr
 	}

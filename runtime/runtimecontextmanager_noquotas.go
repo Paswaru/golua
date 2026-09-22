@@ -94,11 +94,17 @@ func (m *runtimeContextManager) CallContext(def RuntimeContextDef, f func() erro
 func (m *runtimeContextManager) RequireCPU(cpuAmount uint64) {
 }
 
+func (m *runtimeContextManager) ConsumeCPU(cpuAmount uint64) {
+}
+
 func (m *runtimeContextManager) UnusedCPU() uint64 {
 	return 0
 }
 
 func (m *runtimeContextManager) RequireMem(memAmount uint64) {
+}
+
+func (m *runtimeContextManager) ConsumeMem(memAmount uint64) {
 }
 
 func (m *runtimeContextManager) RequireSize(sz uintptr) uint64 {
@@ -134,6 +140,9 @@ func (m *runtimeContextManager) LinearUnused(cpuFactor uint64) uint64 {
 }
 
 func (m *runtimeContextManager) LinearRequire(cpuFactor uint64, amt uint64) {
+}
+
+func (m *runtimeContextManager) LinearConsume(cpuFactor uint64, amt uint64) {
 }
 
 func (m *runtimeContextManager) TerminateContext(format string, args ...interface{}) {

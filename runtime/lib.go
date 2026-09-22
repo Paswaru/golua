@@ -451,7 +451,7 @@ func (r *Runtime) LoadFromSourceOrCode(name string, source []byte, mode string, 
 	case canBeBinary && HasMarshalPrefix(source):
 		buf := bytes.NewBuffer(source)
 		k, used, err := UnmarshalConst(buf, r.LinearUnused(10))
-		r.LinearRequire(10, used)
+		r.LinearConsume(10, used)
 		if err != nil {
 			return nil, err
 		}

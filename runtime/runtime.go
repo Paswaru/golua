@@ -314,7 +314,8 @@ func (r *Runtime) Metatable(v Value) Value {
 // CPU.
 func (r *Runtime) SetTable(t *Table, k, v Value) {
 	r.RequireCPU(1)
-	r.RequireMem(t.Set(k, v))
+	// The table has already grown by the time we know by how much.
+	r.ConsumeMem(t.Set(k, v))
 }
 
 var errTableIndexIsNil = errors.New("table index is nil")
